@@ -211,6 +211,77 @@ def lexical_signal(text):
 
 
 # ============================================================================
+# Multi-modal — image metadata signal (stretch S4, planning.md)
+# ============================================================================
+# A second content type: structured image metadata. Generative tools usually
+# leave fingerprints (a software/generator tag, an embedded text-to-image prompt,
+# or a C2PA content credential). This signal reads those fields; the description/
+# alt-text is still run through the stylometric + lexical text signals upstream.
+
+_AI_IMAGE_GENERATORS = [
+    "dall-e", "dalle", "midjourney", "stable diffusion", "stablediffusion",
+    "firefly", "adobe firefly", "imagen", "ideogram", "flux", "leonardo",
+    "nightcafe", "craiyon", "gan", "generative",
+]
+
+
+def metadata_signal(metadata):
+    """Return {'p_meta': float, 'reason': str} from image metadata fields.
+
+    `metadata` is a dict that may contain: software/generator (str),
+    prompt (str), has_c2pa (bool).
+    """
+    blob = " ".join(
+        str(metadata.get(k, "")) for k in ("software", "generator", "tool", "model")
+    ).lower()
+    hits = [g for g in _AI_IMAGE_GENERATORS if g in blob]
+    if hits:
+        return {"p_meta": 0.95, "reason": f"generator/software tag names an AI tool: {hits}"}
+    if metadata.get("prompt"):
+        return {"p_meta": 0.90, "reason": "metadata embeds a text-to-image generation prompt"}
+    if metadata.get("has_c2pa") is True:
+        return {"p_meta": 0.80, "reason": "C2PA content credential asserts AI generation"}
+    if metadata.get("has_c2pa") is False or blob.strip():
+        return {"p_meta": 0.25, "reason": "camera/editor metadata present, no AI generator markers"}
+    return {"p_meta": 0.50, "reason": "insufficient metadata to judge provenance"}
+
+
+def combine_metadata(p_meta, p_style, p_lex, word_count):
+    """Blend the metadata signal (dominant) with text signals on the description.
+
+    Metadata is decisive for images, so it carries most of the weight; the
+    description text signals nudge it. Reuses the same confidence/verdict shape
+    as combine_signals so labels/appeals/audit-log work unchanged downstream.
+    """
+    if p_style is not None and p_lex is not None and word_count > 0:
+        p_ai = 0.70 * p_meta + 0.15 * p_style + 0.15 * p_lex
+        components = [p_meta, p_style, p_lex]
+    else:
+        p_ai = p_meta
+        components = [p_meta]
+
+    disagreement = statistics.pstdev(components) if len(components) > 1 else 0.0
+    confidence = _clamp(2 * abs(p_ai - 0.5) * (1 - disagreement))
+
+    if disagreement > DISAGREEMENT_MAX:
+        attribution = "uncertain"
+    elif p_ai >= AI_THRESHOLD:
+        attribution = "likely_ai"
+    elif p_ai <= HUMAN_THRESHOLD:
+        attribution = "likely_human"
+    else:
+        attribution = "uncertain"
+
+    return {
+        "p_ai": round(p_ai, 3),
+        "confidence": round(confidence, 3),
+        "disagreement": round(disagreement, 3),
+        "attribution": attribution,
+        "low_evidence": False,
+    }
+
+
+# ============================================================================
 # Confidence scoring — combine the three signals (planning.md §2)
 # ============================================================================
 

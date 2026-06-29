@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Provenance Guard — Attribution Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,900;1,9..144,400;1,9..144,600&family=IBM+Plex+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#ece2cb; --paper-hi:#f3ebd8; --paper-lo:#e2d6ba;
+    --ink:#181510; --ink-2:#3d362a; --ink-3:#6b6151;
+    --rule:rgba(24,21,16,.22); --rule-strong:rgba(24,21,16,.5);
+    --red:#b23218; --red-deep:#8a230f;
+    --green:#2f6043; --ochre:#9c6b14;
+    --card:#f5eedc;
+    --shadow:0 1px 0 rgba(255,255,255,.5), 0 18px 40px -22px rgba(24,21,16,.55);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:"Newsreader",Georgia,serif;
+    color:var(--ink); background:var(--paper);
+    font-size:18px; line-height:1.5; min-height:100vh;
+    background-image:
+      radial-gradient(120% 80% at 50% -10%, var(--paper-hi), transparent 60%),
+      radial-gradient(140% 120% at 50% 120%, var(--paper-lo), transparent 55%);
+  }
+  /* paper grain */
+  body::before{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:0; opacity:.5;
+    mix-blend-mode:multiply;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E");
+  }
+  .wrap{position:relative; z-index:1; max-width:880px; margin:0 auto; padding:40px 26px 90px}
+
+  /* ---- masthead ---- */
+  .masthead{text-align:center; opacity:0; animation:fadeUp .9s .05s both}
+  .kicker{font-family:"IBM Plex Mono",monospace; font-size:.7rem; letter-spacing:.42em;
+    text-transform:uppercase; color:var(--ink-3); margin-bottom:14px}
+  .title{font-family:"Fraunces",serif; font-weight:900; font-size:clamp(2.7rem,9vw,5.2rem);
+    line-height:.92; letter-spacing:-.02em; margin:0;
+    font-variation-settings:"opsz" 140; text-wrap:balance}
+  .title .amp{font-style:italic; font-weight:600; color:var(--red)}
+  .sub{font-style:italic; font-size:1.05rem; color:var(--ink-2); margin:14px auto 0; max-width:30em}
+  .rule{height:0; border:0; border-top:1.5px solid var(--rule-strong);
+    position:relative; margin:22px 0 0}
+  .rule::after{content:""; position:absolute; left:0; right:0; top:4px; border-top:.5px solid var(--rule)}
+  .dateline{display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;
+    font-family:"IBM Plex Mono",monospace; font-size:.66rem; letter-spacing:.2em;
+    text-transform:uppercase; color:var(--ink-3); margin-top:10px}
+  .dateline a{color:var(--red); text-decoration:none; border-bottom:1px solid transparent}
+  .dateline a:hover{border-bottom-color:var(--red)}
+
+  /* ---- composer ---- */
+  .composer{margin-top:34px; background:var(--card); border:1.5px solid var(--ink);
+    box-shadow:var(--shadow); padding:0; opacity:0; animation:fadeUp .9s .18s both}
+  .composer-h{display:flex; align-items:baseline; justify-content:space-between;
+    padding:16px 22px; border-bottom:1px solid var(--rule)}
+  .composer-h h2{font-family:"Fraunces",serif; font-weight:600; font-size:1.15rem; margin:0;
+    letter-spacing:-.01em}
+  .tabs{display:flex; gap:0; font-family:"IBM Plex Mono",monospace; font-size:.66rem;
+    letter-spacing:.12em; text-transform:uppercase}
+  .tab{padding:6px 12px; border:1px solid var(--rule); background:transparent; cursor:pointer;
+    color:var(--ink-3); font:inherit; margin-left:-1px}
+  .tab.active{background:var(--ink); color:var(--paper-hi); border-color:var(--ink)}
+  .composer-b{padding:20px 22px}
+  label.fld{display:block; font-family:"IBM Plex Mono",monospace; font-size:.64rem;
+    letter-spacing:.18em; text-transform:uppercase; color:var(--ink-3); margin:0 0 6px}
+  input[type=text], textarea{width:100%; font-family:"Newsreader",serif; font-size:1.02rem;
+    color:var(--ink); background:var(--paper-hi); border:1px solid var(--rule-strong);
+    padding:11px 13px; border-radius:0; outline:none; transition:border-color .2s, box-shadow .2s}
+  input[type=text]:focus, textarea:focus{border-color:var(--ink); box-shadow:0 0 0 3px rgba(178,50,24,.14)}
+  textarea{min-height:140px; resize:vertical; line-height:1.55}
+  .row{display:flex; gap:14px; flex-wrap:wrap; margin-bottom:16px}
+  .row > div{flex:1; min-width:180px}
+  .pane{display:none} .pane.active{display:block}
+  .examples{display:flex; gap:8px; flex-wrap:wrap; margin:10px 0 2px}
+  .chip{font-family:"IBM Plex Mono",monospace; font-size:.6rem; letter-spacing:.1em;
+    text-transform:uppercase; padding:5px 9px; border:1px solid var(--rule-strong);
+    background:transparent; cursor:pointer; color:var(--ink-2)}
+  .chip:hover{background:var(--ink); color:var(--paper-hi); border-color:var(--ink)}
+  .checkbox{display:flex; align-items:center; gap:8px; font-size:.95rem; color:var(--ink-2)}
+  .actions{display:flex; align-items:center; gap:16px; margin-top:18px}
+  .examine{font-family:"Fraunces",serif; font-weight:600; font-size:1.05rem;
+    background:var(--red); color:#fdf3e6; border:1.5px solid var(--red-deep); cursor:pointer;
+    padding:12px 26px; letter-spacing:.01em; position:relative; transition:transform .12s, background .2s}
+  .examine:hover{background:var(--red-deep)} .examine:active{transform:translateY(1px)}
+  .examine[disabled]{opacity:.6; cursor:wait}
+  .hint{font-family:"IBM Plex Mono",monospace; font-size:.62rem; letter-spacing:.08em;
+    color:var(--ink-3); text-transform:uppercase}
+
+  /* ---- result ---- */
+  .result{margin-top:30px; display:none}
+  .result.show{display:block}
+  .verdict-card{background:var(--card); border:1.5px solid var(--ink); box-shadow:var(--shadow);
+    position:relative; overflow:hidden}
+  .vc-top{display:flex; gap:22px; align-items:center; padding:24px 24px 18px;
+    border-bottom:1px solid var(--rule); position:relative}
+  .stamp{flex:none; font-family:"IBM Plex Mono",monospace; font-weight:600; font-size:.74rem;
+    letter-spacing:.16em; text-transform:uppercase; padding:14px 16px; text-align:center;
+    border:3px double currentColor; transform:rotate(-5deg); line-height:1.25;
+    animation:stampIn .5s cubic-bezier(.2,1.3,.5,1) both}
+  .stamp small{display:block; font-size:.58rem; letter-spacing:.2em; opacity:.8; margin-top:3px}
+  .v-ai{color:var(--red)} .v-human{color:var(--green)} .v-uncertain{color:var(--ochre)}
+  .vc-head h3{font-family:"Fraunces",serif; font-weight:900; font-size:1.7rem; margin:0;
+    letter-spacing:-.01em; line-height:1}
+  .vc-head .glyph{font-size:1.3rem}
+  .meters{display:flex; gap:26px; margin-top:8px; font-family:"IBM Plex Mono",monospace;
+    font-size:.66rem; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3)}
+  .meters b{display:block; font-family:"Fraunces",serif; font-size:1.5rem; font-weight:600;
+    letter-spacing:0; color:var(--ink); text-transform:none}
+  .badge{display:inline-block; margin-left:auto; align-self:flex-start;
+    font-family:"IBM Plex Mono",monospace; font-size:.6rem; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--green); border:1px solid var(--green); padding:5px 8px}
+
+  .label-quote{padding:20px 24px; font-size:1.12rem; line-height:1.55; font-style:italic;
+    border-bottom:1px solid var(--rule); position:relative}
+  .label-quote::before{content:"“"; font-family:"Fraunces",serif; font-size:3rem; color:var(--red);
+    position:absolute; left:8px; top:2px; opacity:.5}
+  .label-quote span{display:block; padding-left:26px}
+
+  .signals{padding:20px 24px}
+  .signals h4{font-family:"IBM Plex Mono",monospace; font-size:.62rem; letter-spacing:.2em;
+    text-transform:uppercase; color:var(--ink-3); margin:0 0 14px}
+  .sig{margin-bottom:13px}
+  .sig-top{display:flex; justify-content:space-between; font-family:"IBM Plex Mono",monospace;
+    font-size:.72rem; letter-spacing:.04em; margin-bottom:4px}
+  .sig-name{color:var(--ink-2)} .sig-val{color:var(--ink); font-weight:600}
+  .track{height:8px; background:var(--paper-lo); border:1px solid var(--rule); position:relative}
+  .fill{height:100%; width:0; transition:width .9s cubic-bezier(.2,.8,.2,1)}
+  .rationale{margin-top:14px; font-size:.95rem; color:var(--ink-2); font-style:italic;
+    border-left:2px solid var(--rule-strong); padding-left:12px}
+
+  .vc-actions{display:flex; gap:12px; flex-wrap:wrap; padding:18px 24px; border-top:1px solid var(--rule);
+    background:var(--paper-hi)}
+  .btn{font-family:"IBM Plex Mono",monospace; font-size:.66rem; letter-spacing:.12em;
+    text-transform:uppercase; padding:10px 16px; cursor:pointer; background:transparent;
+    border:1.5px solid var(--ink); color:var(--ink); transition:background .2s,color .2s}
+  .btn:hover{background:var(--ink); color:var(--paper-hi)}
+  .btn.ghost{border-color:var(--rule-strong); color:var(--ink-3)}
+  .btn.ghost:hover{background:var(--ink-3); color:var(--paper-hi); border-color:var(--ink-3)}
+
+  .appeal-box{display:none; padding:18px 24px; border-top:1px solid var(--rule); background:var(--card)}
+  .appeal-box.show{display:block; animation:fadeUp .4s both}
+  .appeal-box h4{font-family:"Fraunces",serif; font-weight:600; margin:0 0 10px; font-size:1.1rem}
+  .review-stamp{display:none; text-align:center; padding:8px 0 0}
+  .review-stamp.show{display:block}
+  .review-stamp span{display:inline-block; font-family:"IBM Plex Mono",monospace; font-weight:600;
+    font-size:.8rem; letter-spacing:.2em; text-transform:uppercase; color:var(--ochre);
+    border:3px double var(--ochre); padding:10px 18px; transform:rotate(-3deg);
+    animation:stampIn .5s cubic-bezier(.2,1.3,.5,1) both}
+
+  .note{font-family:"IBM Plex Mono",monospace; font-size:.7rem; letter-spacing:.05em;
+    padding:12px 16px; margin-top:14px; border:1px solid var(--red); color:var(--red-deep);
+    background:rgba(178,50,24,.06)}
+
+  /* ---- modal (verify) ---- */
+  .modal{position:fixed; inset:0; z-index:20; display:none; align-items:center; justify-content:center;
+    background:rgba(24,21,16,.5); padding:20px}
+  .modal.show{display:flex; animation:fadeIn .25s both}
+  .modal-card{background:var(--card); border:1.5px solid var(--ink); box-shadow:var(--shadow);
+    max-width:520px; width:100%; padding:24px; animation:fadeUp .35s both}
+  .modal-card h3{font-family:"Fraunces",serif; font-weight:900; margin:0 0 4px; font-size:1.5rem}
+  .modal-card p{margin:0 0 16px; font-size:.98rem; color:var(--ink-2)}
+  .modal-x{float:right; cursor:pointer; font-family:"IBM Plex Mono",monospace; color:var(--ink-3);
+    border:none; background:none; font-size:1rem}
+
+  footer{text-align:center; margin-top:46px; font-family:"IBM Plex Mono",monospace;
+    font-size:.62rem; letter-spacing:.18em; text-transform:uppercase; color:var(--ink-3)}
+
+  .spin{display:inline-block; width:13px; height:13px; border:2px solid #fdf3e6;
+    border-top-color:transparent; border-radius:50%; animation:spin .7s linear infinite; vertical-align:-2px}
+
+  @keyframes fadeUp{from{opacity:0; transform:translateY(16px)} to{opacity:1; transform:none}}
+  @keyframes fadeIn{from{opacity:0} to{opacity:1}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes stampIn{0%{opacity:0; transform:rotate(-5deg) scale(2.4)} 60%{opacity:1}
+    100%{opacity:1; transform:rotate(-5deg) scale(1)}}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="kicker">Forensic Linguistics Bureau · Established MMXXVI</div>
+    <h1 class="title">Provenance <span class="amp">&amp;</span> Guard</h1>
+    <p class="sub">An attribution desk that examines whether a passage was set by a human hand or struck by a machine — and says so plainly, doubt and all.</p>
+    <hr class="rule">
+    <div class="dateline">
+      <span>No. 04 — The Attribution Desk</span>
+      <span><a href="/dashboard" target="_blank">Reading Room ↗ (Analytics)</a> · <a href="#" id="open-verify">Apply for Human Seal</a></span>
+    </div>
+  </header>
+
+  <section class="composer">
+    <div class="composer-h">
+      <h2>Submit a passage for examination</h2>
+      <div class="tabs">
+        <button class="tab active" data-pane="text">Text</button>
+        <button class="tab" data-pane="image">Image metadata</button>
+      </div>
+    </div>
+    <div class="composer-b">
+      <div class="row">
+        <div>
+          <label class="fld" for="creator">Creator ID</label>
+          <input type="text" id="creator" value="desk-demo" autocomplete="off">
+        </div>
+      </div>
+
+      <!-- TEXT pane -->
+      <div class="pane active" data-pane="text">
+        <label class="fld" for="text">Passage</label>
+        <textarea id="text" placeholder="Paste a poem, story excerpt, or blog passage…"></textarea>
+        <div class="examples">
+          <button class="chip" data-ex="human">try: casual human</button>
+          <button class="chip" data-ex="ai">try: formal AI</button>
+          <button class="chip" data-ex="formal">try: formal human</button>
+        </div>
+      </div>
+
+      <!-- IMAGE pane -->
+      <div class="pane" data-pane="image">
+        <div class="row">
+          <div>
+            <label class="fld" for="software">Software / generator tag</label>
+            <input type="text" id="software" placeholder="e.g. Midjourney v6 or Canon EOS R5">
+          </div>
+          <div>
+            <label class="fld" for="prompt">Embedded prompt (if any)</label>
+            <input type="text" id="prompt" placeholder="text-to-image prompt">
+          </div>
+        </div>
+        <label class="fld" for="desc">Image description / alt-text</label>
+        <textarea id="desc" style="min-height:90px" placeholder="A neon-lit city skyline at dusk…"></textarea>
+        <label class="checkbox" style="margin-top:12px"><input type="checkbox" id="c2pa"> C2PA content credential present</label>
+      </div>
+
+      <div class="actions">
+        <button class="examine" id="go">Examine ⟶</button>
+        <span class="hint" id="status">awaiting submission</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="result" id="result">
+    <div class="verdict-card" id="vcard">
+      <div class="vc-top">
+        <div class="stamp" id="stamp"></div>
+        <div class="vc-head">
+          <h3 id="verdict"></h3>
+          <div class="meters">
+            <div>Confidence<b id="m-conf"></b></div>
+            <div>AI likelihood<b id="m-pai"></b></div>
+          </div>
+        </div>
+        <span class="badge" id="badge" style="display:none">✅ Verified Human Creator</span>
+      </div>
+      <div class="label-quote"><span id="label"></span></div>
+      <div class="signals">
+        <h4>Signal breakdown — higher bar means more machine-like</h4>
+        <div id="sigs"></div>
+        <div class="rationale" id="rationale" style="display:none"></div>
+      </div>
+      <div class="vc-actions">
+        <button class="btn" id="appeal-toggle">⚖ Contest this finding</button>
+        <button class="btn ghost" id="reset">＋ New examination</button>
+        <span class="hint" id="cid" style="margin-left:auto; align-self:center"></span>
+      </div>
+      <div class="appeal-box" id="appeal-box">
+        <h4>Contest this finding</h4>
+        <label class="fld" for="reason">Your reasoning (the reviewer will see this)</label>
+        <textarea id="reason" style="min-height:90px" placeholder="I wrote this myself. I am a non-native speaker and my style reads more formal than typical…"></textarea>
+        <div style="margin-top:12px"><button class="btn" id="appeal-send">Submit appeal</button></div>
+        <div class="review-stamp" id="review"><span>● Under Review ●</span></div>
+      </div>
+    </div>
+    <div id="err"></div>
+  </section>
+
+  <footer>Provenance Guard · three signals, one honest verdict · built for AI201</footer>
+</div>
+
+<!-- verify modal -->
+<div class="modal" id="verify-modal">
+  <div class="modal-card">
+    <button class="modal-x" id="verify-x">close ✕</button>
+    <h3>Apply for the Human Seal</h3>
+    <p>Write an original passage on the spot (≥ 25 words). If it doesn't read as machine-set, your Creator ID earns a Verified-Human seal that rides along on future submissions.</p>
+    <label class="fld" for="v-creator">Creator ID</label>
+    <input type="text" id="v-creator" value="desk-demo" style="margin-bottom:14px">
+    <label class="fld" for="v-passage">Original passage</label>
+    <textarea id="v-passage" placeholder="Write freely, in your own voice…"></textarea>
+    <div style="margin-top:14px; display:flex; align-items:center; gap:14px">
+      <button class="examine" id="v-send" style="font-size:.95rem; padding:10px 20px">Request seal</button>
+      <span class="hint" id="v-status"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+const EX = {
+  human:"ok so i finally tried that new ramen place downtown and honestly? underwhelming. the broth was fine but they put WAY too much sodium in it and i was thirsty for like three hours after. my friend got the spicy version and said it was better. probably won't go back unless someone drags me there",
+  ai:"Artificial intelligence represents a transformative paradigm shift in modern society. It is important to note that while the benefits of AI are numerous, it is equally essential to consider the ethical implications. Furthermore, stakeholders across various sectors must collaborate to ensure responsible deployment.",
+  formal:"The relationship between monetary policy and asset price inflation has been extensively studied in the literature. Central banks face a fundamental tension between their mandate for price stability and the unintended consequences of prolonged low interest rates on equity and real estate valuations."
+};
+const V = {
+  likely_ai:      {stamp:"AI<br><small>generated</small>", word:"Likely machine-set", glyph:"🤖", cls:"v-ai"},
+  likely_human:   {stamp:"Human<br><small>written</small>", word:"Likely human-written", glyph:"✍", cls:"v-human"},
+  uncertain:      {stamp:"Open<br><small>inconclusive</small>", word:"Attribution uncertain", glyph:"❓", cls:"v-uncertain"}
+};
+const $ = s => document.querySelector(s);
+const pct = x => x==null ? "—" : Math.round(x*100)+"%";
+function barColor(v){ return v<0.4 ? "var(--green)" : v<0.65 ? "var(--ochre)" : "var(--red)"; }
+
+let pane = "text", lastCid = null;
+
+// tab switching
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
+  pane=t.dataset.pane;
+  document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x===t));
+  document.querySelectorAll(".pane").forEach(p=>p.classList.toggle("active",p.dataset.pane===pane));
+});
+document.querySelectorAll(".chip").forEach(c=>c.onclick=()=>{ $("#text").value = EX[c.dataset.ex]; });
+
+$("#go").onclick = examine;
+async function examine(){
+  const creator_id = $("#creator").value.trim() || "anon";
+  let body;
+  if(pane==="text"){
+    const text = $("#text").value.trim();
+    if(!text){ flash("Paste a passage first."); return; }
+    body = {creator_id, text};
+  } else {
+    const metadata = {};
+    if($("#software").value.trim()) metadata.software = $("#software").value.trim();
+    if($("#prompt").value.trim())   metadata.prompt   = $("#prompt").value.trim();
+    metadata.has_c2pa = $("#c2pa").checked;
+    if(Object.keys(metadata).length===1 && !$("#software").value && !$("#prompt").value){
+      flash("Add a software tag or prompt."); return;
+    }
+    body = {creator_id, content_type:"image_metadata", metadata, description:$("#desc").value.trim()};
+  }
+  setBusy(true);
+  try{
+    const r = await fetch("/submit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    const d = await r.json();
+    if(!r.ok){ flash(d.error || (d.detail ? "Rate limit: "+d.detail : "Request failed")); setBusy(false); return; }
+    render(d);
+  }catch(e){ flash("Could not reach the server."); }
+  setBusy(false);
+}
+
+function render(d){
+  $("#err").innerHTML = "";
+  const v = V[d.attribution] || V.uncertain;
+  const stamp = $("#stamp");
+  stamp.className = "stamp " + v.cls; stamp.innerHTML = v.stamp;
+  // re-trigger stamp animation
+  stamp.style.animation="none"; void stamp.offsetWidth; stamp.style.animation="";
+  $("#verdict").innerHTML = `<span class="glyph">${v.glyph}</span> ${v.word}`;
+  $("#m-conf").textContent = pct(d.confidence);
+  $("#m-pai").textContent  = pct(d.p_ai);
+  $("#label").textContent  = d.label;
+  $("#badge").style.display = d.verified_creator ? "inline-block" : "none";
+  lastCid = d.content_id;
+  $("#cid").textContent = "id " + d.content_id.slice(0,8);
+
+  // signals
+  const s = d.signals || {};
+  const rows = [];
+  if(d.content_type==="image_metadata"){
+    rows.push(["Metadata (image)", s.metadata_score]);
+    rows.push(["Stylometry (description)", s.stylometric_score]);
+    rows.push(["Lexical (description)", s.lexical_score]);
+  } else {
+    rows.push(["Semantic — Groq LLM", s.llm_score]);
+    rows.push(["Stylometry — burstiness", s.stylometric_score]);
+    rows.push(["Lexical — register", s.lexical_score]);
+  }
+  $("#sigs").innerHTML = rows.map(([name,val])=>`
+    <div class="sig">
+      <div class="sig-top"><span class="sig-name">${name}</span><span class="sig-val">${val==null?"n/a":val.toFixed(2)}</span></div>
+      <div class="track"><div class="fill" style="background:${val==null?'var(--rule)':barColor(val)}"></div></div>
+    </div>`).join("") +
+    `<div class="sig"><div class="sig-top"><span class="sig-name">Signal disagreement</span><span class="sig-val">${s.disagreement==null?'—':s.disagreement.toFixed(2)}</span></div></div>`;
+  // animate bars after paint
+  requestAnimationFrame(()=>{ document.querySelectorAll("#sigs .fill").forEach((f,i)=>{
+    const val = rows[i][1]; if(val!=null) f.style.width = Math.round(val*100)+"%";
+  });});
+
+  const rat = $("#rationale");
+  if(s.llm_rationale){ rat.style.display="block"; rat.textContent = "Examiner's note — " + s.llm_rationale; }
+  else if(s.metadata_reason){ rat.style.display="block"; rat.textContent = "Metadata note — " + s.metadata_reason; }
+  else rat.style.display="none";
+
+  // reset appeal state
+  $("#appeal-box").classList.remove("show");
+  $("#review").classList.remove("show");
+  $("#appeal-send").disabled=false; $("#appeal-send").textContent="Submit appeal";
+  $("#result").classList.add("show");
+  $("#result").scrollIntoView({behavior:"smooth", block:"start"});
+}
+
+$("#appeal-toggle").onclick=()=> $("#appeal-box").classList.toggle("show");
+$("#reset").onclick=()=>{ $("#result").classList.remove("show"); $("#text").value=""; window.scrollTo({top:0,behavior:"smooth"}); };
+
+$("#appeal-send").onclick = async ()=>{
+  const reason = $("#reason").value.trim();
+  if(!reason){ alert("Please add your reasoning."); return; }
+  const btn=$("#appeal-send"); btn.disabled=true; btn.textContent="Filing…";
+  const r = await fetch("/appeal",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({content_id:lastCid, creator_reasoning:reason})});
+  const d = await r.json();
+  if(!r.ok){ alert(d.error||"Appeal failed"); btn.disabled=false; btn.textContent="Submit appeal"; return; }
+  $("#review").classList.add("show");
+  btn.textContent="Filed ✓";
+};
+
+// verify modal
+$("#open-verify").onclick=(e)=>{ e.preventDefault(); $("#verify-modal").classList.add("show"); };
+$("#verify-x").onclick=()=> $("#verify-modal").classList.remove("show");
+$("#verify-modal").onclick=(e)=>{ if(e.target.id==="verify-modal") $("#verify-modal").classList.remove("show"); };
+$("#v-send").onclick = async ()=>{
+  const creator_id=$("#v-creator").value.trim(), passage=$("#v-passage").value.trim();
+  if(passage.split(/\s+/).filter(Boolean).length<25){ $("#v-status").textContent="need ≥ 25 words"; return; }
+  $("#v-status").innerHTML='<span class="spin" style="border-color:var(--ink); border-top-color:transparent"></span> examining…';
+  const r = await fetch("/verify",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({creator_id, passage})});
+  const d = await r.json();
+  if(d.verified){ $("#v-status").innerHTML="✅ Seal granted — "+d.certificate_id.slice(0,8); }
+  else { $("#v-status").textContent = "✕ " + (d.reason||d.error||"declined"); }
+};
+
+function setBusy(b){
+  const go=$("#go");
+  go.disabled=b;
+  go.innerHTML = b ? '<span class="spin"></span> examining…' : 'Examine ⟶';
+  $("#status").textContent = b ? "running three signals…" : "awaiting submission";
+}
+function flash(msg){ $("#err").innerHTML = `<div class="note">${msg}</div>`; $("#result").classList.add("show"); }
+</script>
+</body>
+</html>

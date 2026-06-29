@@ -58,13 +58,25 @@ def init_db():
                 confidence        REAL,
                 p_ai              REAL,
                 p_llm             REAL,
-                p_style           REAL,        -- NULL until Milestone 4
-                p_lex             REAL,        -- NULL until Milestone 4
-                disagreement      REAL,        -- NULL until Milestone 4
+                p_style           REAL,
+                p_lex             REAL,
+                p_meta            REAL,        -- image_metadata signal (multi-modal stretch)
+                disagreement      REAL,
                 llm_rationale     TEXT,
+                verified_creator  INTEGER DEFAULT 0,  -- had a Verified-Human cert at submit time
                 degraded          INTEGER DEFAULT 0,
                 status            TEXT NOT NULL DEFAULT 'classified',
                 appeal_reasoning  TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS certificates (
+                cert_id     TEXT PRIMARY KEY,
+                creator_id  TEXT NOT NULL,
+                method      TEXT NOT NULL,
+                issued_at   TEXT NOT NULL
             )
             """
         )
@@ -87,8 +99,8 @@ def insert_decision(record):
     cols = [
         "content_id", "creator_id", "content_type", "timestamp", "text_hash",
         "text_preview", "word_count", "attribution", "confidence", "p_ai",
-        "p_llm", "p_style", "p_lex", "disagreement", "llm_rationale",
-        "degraded", "status", "appeal_reasoning",
+        "p_llm", "p_style", "p_lex", "p_meta", "disagreement", "llm_rationale",
+        "verified_creator", "degraded", "status", "appeal_reasoning",
     ]
     placeholders = ", ".join("?" for _ in cols)
     values = [record.get(c) for c in cols]
@@ -122,3 +134,98 @@ def get_recent_decisions(limit=LOG_DEFAULT_LIMIT):
             "SELECT * FROM decisions ORDER BY timestamp DESC LIMIT ?", (limit,)
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def mark_under_review(content_id, reasoning):
+    """Flip a content's status to 'under_review' and store the appeal reasoning.
+    Returns True if the content existed and was updated, else False."""
+    with _connect() as conn:
+        cur = conn.execute(
+            "UPDATE decisions SET status = 'under_review', appeal_reasoning = ? "
+            "WHERE content_id = ?",
+            (reasoning, content_id),
+        )
+        return cur.rowcount > 0
+
+
+def get_appeals_queue():
+    """All content currently awaiting human review (the reviewer queue)."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM decisions WHERE status = 'under_review' "
+            "ORDER BY timestamp DESC"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+# --- Provenance certificates (Verified Human stretch, planning.md S2) ---------
+
+def insert_certificate(cert_id, creator_id, method):
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO certificates (cert_id, creator_id, method, issued_at) "
+            "VALUES (?, ?, ?, ?)",
+            (cert_id, creator_id, method, now_iso()),
+        )
+
+
+def get_certificate(creator_id):
+    """Return the most recent certificate for a creator, or None."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM certificates WHERE creator_id = ? "
+            "ORDER BY issued_at DESC LIMIT 1",
+            (creator_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+# --- Analytics aggregates (dashboard stretch, planning.md S3) ------------------
+
+def get_analytics():
+    """Aggregate detection patterns for the dashboard."""
+    with _connect() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM decisions").fetchone()[0]
+
+        verdicts = {
+            row["attribution"]: row["n"]
+            for row in conn.execute(
+                "SELECT attribution, COUNT(*) AS n FROM decisions GROUP BY attribution"
+            ).fetchall()
+        }
+        appeals = conn.execute(
+            "SELECT COUNT(*) FROM decisions WHERE status = 'under_review'"
+        ).fetchone()[0]
+        avg_conf = conn.execute(
+            "SELECT AVG(confidence) FROM decisions WHERE confidence IS NOT NULL"
+        ).fetchone()[0]
+        # signal agreement: decisions where the signals broadly agreed
+        agree = conn.execute(
+            "SELECT COUNT(*) FROM decisions WHERE disagreement IS NOT NULL "
+            "AND disagreement < 0.15"
+        ).fetchone()[0]
+        scored = conn.execute(
+            "SELECT COUNT(*) FROM decisions WHERE disagreement IS NOT NULL"
+        ).fetchone()[0]
+        # extra metric: appeal rate on AI verdicts (a false-positive proxy)
+        ai_total = conn.execute(
+            "SELECT COUNT(*) FROM decisions WHERE attribution = 'likely_ai'"
+        ).fetchone()[0]
+        ai_appealed = conn.execute(
+            "SELECT COUNT(*) FROM decisions WHERE attribution = 'likely_ai' "
+            "AND status = 'under_review'"
+        ).fetchone()[0]
+        certs = conn.execute("SELECT COUNT(*) FROM certificates").fetchone()[0]
+
+    def rate(num, den):
+        return round(num / den, 3) if den else 0.0
+
+    return {
+        "total_submissions": total,
+        "verdict_distribution": verdicts,
+        "appeal_rate": rate(appeals, total),
+        "average_confidence": round(avg_conf, 3) if avg_conf is not None else None,
+        "signal_agreement_rate": rate(agree, scored),
+        "ai_verdict_appeal_rate": rate(ai_appealed, ai_total),
+        "verified_creators": certs,
+    }
