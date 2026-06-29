@@ -21,11 +21,17 @@ from db import (
     add_event,
     get_recent_decisions,
     init_db,
+    insert_decision,
     now_iso,
     text_hash,
     text_preview,
 )
-from detection import groq_signal, placeholder_score
+from detection import (
+    combine_signals,
+    groq_signal,
+    lexical_signal,
+    stylometric_signal,
+)
 
 load_dotenv()  # read GROQ_API_KEY from .env
 
@@ -49,10 +55,16 @@ def submit():
     content_id = str(uuid.uuid4())
     word_count = len(text.split())
 
-    # --- Signal 1: Groq LLM ---
-    sig1 = groq_signal(text)
-    p_llm = sig1["p_llm"]
-    attribution, confidence = placeholder_score(p_llm, word_count)
+    # --- Run the three detection signals (planning.md §1) ---
+    sig1 = groq_signal(text)              # semantic
+    sig2 = stylometric_signal(text)       # structural
+    sig3 = lexical_signal(text)           # lexical
+    p_llm, p_style, p_lex = sig1["p_llm"], sig2["p_style"], sig3["p_lex"]
+
+    # --- Combine into a calibrated confidence + verdict (planning.md §2) ---
+    score = combine_signals(p_llm, p_style, p_lex, word_count, sig1["degraded"])
+    attribution = score["attribution"]
+    confidence = score["confidence"]
 
     # --- Persist to audit log ---
     record = {
@@ -65,23 +77,25 @@ def submit():
         "word_count": word_count,
         "attribution": attribution,
         "confidence": confidence,
-        "p_ai": p_llm,            # provisional; replaced by ensemble blend in M4
+        "p_ai": score["p_ai"],
         "p_llm": p_llm,
-        "p_style": None,          # Milestone 4
-        "p_lex": None,            # Milestone 4
-        "disagreement": None,     # Milestone 4
+        "p_style": p_style,
+        "p_lex": p_lex,
+        "disagreement": score["disagreement"],
         "llm_rationale": sig1["rationale"],
         "degraded": 1 if sig1["degraded"] else 0,
         "status": "classified",
         "appeal_reasoning": None,
     }
-    from db import insert_decision  # local import keeps module-level surface small
-
     insert_decision(record)
     add_event(content_id, "classified", {
         "attribution": attribution,
         "confidence": confidence,
+        "p_ai": score["p_ai"],
         "p_llm": p_llm,
+        "p_style": p_style,
+        "p_lex": p_lex,
+        "disagreement": score["disagreement"],
         "degraded": sig1["degraded"],
     })
 
@@ -89,12 +103,17 @@ def submit():
         "content_id": content_id,
         "creator_id": creator_id,
         "attribution": attribution,
-        "confidence": confidence,            # PLACEHOLDER until Milestone 4
+        "confidence": confidence,
         "label": _PLACEHOLDER_LABEL,         # PLACEHOLDER until Milestone 5
+        "p_ai": score["p_ai"],
         "signals": {
             "llm_score": p_llm,
+            "stylometric_score": p_style,
+            "lexical_score": p_lex,
+            "disagreement": score["disagreement"],
             "llm_rationale": sig1["rationale"],
         },
+        "low_evidence": score["low_evidence"],
         "degraded": sig1["degraded"],
         "status": "classified",
     }), 200
